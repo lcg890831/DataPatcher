@@ -1,0 +1,216 @@
+<html>
+<head>
+<script type="text/javascript">
+Date.prototype.format = function(fmt)   
+{ //author: meizz   
+  var o = {   
+    "M+" : this.getMonth()+1,                 //月份   
+    "d+" : this.getDate(),                    //日   
+    "h+" : this.getHours(),                   //小时   
+    "m+" : this.getMinutes(),                 //分   
+    "s+" : this.getSeconds(),                 //秒   
+    "q+" : Math.floor((this.getMonth()+3)/3), //季度   
+    "S"  : this.getMilliseconds()             //毫秒   
+  };   
+  if(/(y+)/.test(fmt))   
+    fmt=fmt.replace(RegExp.$1, (this.getFullYear()+"").substr(4 - RegExp.$1.length));   
+  for(var k in o)   
+    if(new RegExp("("+ k +")").test(fmt))   
+  fmt = fmt.replace(RegExp.$1, (RegExp.$1.length==1) ? (o[k]) : (("00"+ o[k]).substr((""+ o[k]).length)));   
+  return fmt;   
+} 
+
+function generate(){
+	 var changeTable =  document.getElementById('changeTable').value.toUpperCase();
+  var changeColumn =  document.getElementById('changeColumn').value.toUpperCase();
+  var whereCondition =  document.getElementById('whereCondition').value.toUpperCase();
+  var changeType =  document.getElementById('changeType').value.toUpperCase();
+   var changeValue =  document.getElementById('changeValue').value.toUpperCase();
+   var pkColumn = document.getElementById('pkColumn').value.toUpperCase();
+
+var changeColumns = changeColumn.split(',');
+var changeValues = changeValue.split(',');
+var pkColumns = pkColumn.split(',');
+
+
+  var myDate = new Date().format('yyyyMMdd');
+  var scriptContent = addEnter('--1.BackUp');
+  var backupTable = 'BK_'+changeTable+'_'+myDate;
+  var backup = 'CREATE TABLE '+backupTable+' AS SELECT * FROM '+changeTable; 
+  if(whereCondition!=null&&whereCondition.length>0){
+  	backup +=' WHERE '+whereCondition;
+  }
+
+    scriptContent += backup+';\n';
+
+   scriptContent += addEnter('--2.Update/Insert/Delete');
+  var changeSql = '';
+  if(changeType=='U'){
+  	var setpart = '';
+  	for(var i in changeColumns){
+       setpart +=changeColumns[i]+'='+changeValues[i]+',';
+  	}
+  	if(setpart.length>0)setpart = setpart.substr(0,setpart.length-1);
+   changeSql = 'UPDATE '+changeTable+' SET '+setpart+' WHERE '+whereCondition+';';
+  }else if(changeType=='I'){
+  	var columnPart = '';
+   if(changeColumn.length>0){
+   	for(var i in changeColumns){
+            columnPart += changeColumns[i]+',';
+    }
+    if(columnPart.length>0)columnPart = columnPart.substr(0,columnPart.length-1);
+    }
+   changeSql = 'INSERT INTO '+changeTable+' VALUES('+changeValue+');';
+  }else if(changeType=='D'){
+    changeSql = 'DELETE FROM '+changeTable+' WHERE '+whereCondition+';';
+  }
+  scriptContent += addEnter(changeSql);
+
+var creatChangLogTable = addEnter('--3.Create Change Log Table')+'DECLARE\n'+
+  'CNT INTEGER;\n'+
+'BEGIN\n'+
+  'SELECT COUNT(1) INTO CNT FROM USER_TABLES\n'+
+   'WHERE TABLE_NAME = \'T_DATA_CHG_LOG\';\n'+
+  'IF CNT = 0 THEN\n'+
+    'EXECUTE IMMEDIATE \'CREATE TABLE T_DATA_CHG_LOG\n'+
+'(\n'+
+  'TABLE_NAME     VARCHAR2(30) NOT NULL,\n'+
+  'PK_FIELD_NAME  VARCHAR2(200) NOT NULL,\n'+
+  'PK_FIELD_VALUE VARCHAR2(1000) NOT NULL,\n'+
+  'CHANGE_TYPE    CHAR(1),\n'+
+  'FIELD_NAME     VARCHAR2(30) NOT NULL,\n'+
+  'OLD_VALUE      VARCHAR2(2000),\n'+
+  'NEW_VALUE      VARCHAR2(2000),\n'+
+  'CREATE_TIME    DATE DEFAULT SYSDATE,\n'+
+  'CREATE_BY      NUMBER(10),\n'+
+  'IT_REMARK      VARCHAR2(4000)\n'+
+')\';\n'+
+  'END IF;\n'+
+'END;\n'+
+'/\n';
+var changeLog = addEnter('--4.Change Log');
+
+var pkValuePart = '';
+var newPkValuePart = '';
+	if(pkColumns.length==1){
+      pkValuePart +='A.'+pkColumns[0];
+       newPkValuePart +='B.'+pkColumns[0];
+	}else{
+	for(var i in pkColumns){
+       pkValuePart +='A.'+pkColumns[i]+'||\',\'||';
+        newPkValuePart +='B.'+pkColumns[i]+'||\',\'||';
+  	}
+  	if(pkValuePart.length>0)pkValuePart = pkValuePart.substr(0,pkValuePart.length-7);
+	if(newPkValuePart.length>0)newPkValuePart = newPkValuePart.substr(0,newPkValuePart.length-7);
+    }
+if(changeType=='U'){
+	var newValuePart = '';
+	var oldValuePart = '';
+	if(changeColumns.length==1){
+      oldValuePart +='A.'+changeColumns[0];
+      newValuePart +='B.'+changeColumns[0];
+	}else{
+	for(var i in changeColumns){
+       oldValuePart +='NVL(A.'+changeColumns[i]+',\'NULL\')||\',\'||';
+       newValuePart +='NVL(B.'+changeColumns[i]+',\'NULL\')||\',\'||';
+  	}
+  	if(oldValuePart.length>0)oldValuePart = oldValuePart.substr(0,oldValuePart.length-7);
+  	if(newValuePart.length>0)newValuePart = newValuePart.substr(0,newValuePart.length-7);
+  }
+   changeLog= 'INSERT INTO T_DATA_CHG_LOG (TABLE_NAME, PK_FIELD_NAME, PK_FIELD_VALUE, CHANGE_TYPE, \n'+
+       'FIELD_NAME, OLD_VALUE, NEW_VALUE, CREATE_TIME, CREATE_BY, IT_REMARK)\n'+
+'SELECT \''+changeTable+'\', \''+pkColumn+'\', '+pkValuePart+', \'U\', \n'+
+   '   \''+changeColumn+'\', '+oldValuePart+', '+newValuePart+', SYSDATE, -11, \'\' \n'+
+'FROM '+backupTable+' A, \n'+
+	'  '+changeTable+'   B \n'+
+'WHERE '+pkValuePart+'='+newPkValuePart+';\n';
+  }else if(changeType=='I'){
+   changeLog = 'INSERT INTO T_DATA_CHG_LOG (TABLE_NAME, PK_FIELD_NAME, PK_FIELD_VALUE, CHANGE_TYPE, \n'+
+       'FIELD_NAME, OLD_VALUE, NEW_VALUE, CREATE_TIME, CREATE_BY, IT_REMARK)\n'+
+'SELECT \''+changeTable+'\', \''+pkColumn+'\', '+pkValuePart+', \'I\', \n'+
+   ' \''+pkColumn+'\',\'\',\'\', SYSDATE, -11, \'\' \n'+
+'FROM '+changeTable+' A \n'+
+ ' WHERE NOT EXISTS(SELECT 1 FROM '+backupTable+' B WHERE '+pkValuePart+'='+newPkValuePart+'); \n';
+  }else if(changeType=='D'){
+    changeLog = 'INSERT INTO T_DATA_CHG_LOG (TABLE_NAME, PK_FIELD_NAME, PK_FIELD_VALUE, CHANGE_TYPE, \n'+
+       'FIELD_NAME, OLD_VALUE, NEW_VALUE, CREATE_TIME, CREATE_BY, IT_REMARK)\n'+
+'SELECT \''+changeTable+'\', \''+pkColumn+'\', '+pkValuePart+', \'D\', \n'+
+   ' \''+pkColumn+'\',\'\',\'\', SYSDATE, -11, \'\' \n'+
+'FROM '+backupTable+' A \n'+
+ ' WHERE NOT EXISTS(SELECT 1 FROM '+changeTable+' B WHERE '+pkValuePart+'='+newPkValuePart+'); \n';
+  }
+scriptContent += creatChangLogTable;
+scriptContent += changeLog;
+    document.getElementById('scriptContent').innerText = scriptContent;
+}
+
+
+function changeChangeType(obj){
+	 var changeTable =  document.getElementById('changeTable');
+  var changeColumn =  document.getElementById('changeColumn');
+  var whereCondition =  document.getElementById('whereCondition');
+  var changeType =  document.getElementById('changeType');
+   var changeValue =  document.getElementById('changeValue');
+   var pkColumn = document.getElementById('pkColumn');
+    if(obj.value=='U'){
+      changeColumn.disabled=false;
+      whereCondition.disabled=false;
+      changeValue.disabled=false;
+    }else if(obj.value=='D'){
+      changeColumn.disabled=true;
+      changeValue.disabled=true;
+       whereCondition.disabled=false;
+    }else if(obj.value=='I'){
+       changeColumn.disabled=false;
+      whereCondition.disabled=true;
+       changeValue.disabled=false;
+    }
+}
+function openReadMe(){
+	var display = document.getElementById('readMe').style.display;
+	display = display=='none'?'block':'none';
+	document.getElementById('readMe').style.display = display;
+}
+function addEnter(a){
+	return a+'\n';
+}
+</script>
+</head>
+<body>
+
+
+<fieldset >
+	<legend>Auto Generate Data Patch Script</legend>
+
+Change Type:<select id='changeType' onchange='changeChangeType(this)'>
+<option  value='U'>Upate</option>
+<option  value='I'>Insert</option>
+<option  value='D'>Delete</option>
+</select>
+Table Name:<input name='changeTable' id='changeTable' style='width:150px'/>
+PK Column:<input name='pkColumn' id='pkColumn'/>
+Column Name:<input name='changeColumn' id='changeColumn'/>
+
+New Value:&nbsp;&nbsp;&nbsp;<input name='changeValue' id='changeValue' style='width:280px'/>
+
+	
+<br/>
+<br/>
+<span >Where Condition:</span><textarea name='whereCondition' id='whereCondition' rows='3' cols='100'></textarea>
+
+
+<input type='button' value='Generate DataPatch' onclick='generate()'/> 
+<a href='javascript:openReadMe()'>Read Me</a>
+<div id='readMe' style='display:none;border:1px solid black;padding:5px;margin:5px'>
+	<span id='remind' style='width:300px;'><b>Tips:</b><br/>1.For PK Column/Column Name/New Value,multiple value split by '<b><font color='red' size='4'>,</font></b></span>'
+</div>
+</fieldset>
+
+<br/>
+<div>
+<textarea id="scriptContent" cols='163' rows='28'></textarea>
+</div>
+</body>
+</html>
+
+
