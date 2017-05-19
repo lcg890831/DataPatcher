@@ -167,9 +167,9 @@
             ctx.stroke();
 
             ctx.moveTo(0, 0);
-            ctx.scale(0.75, 0.75);
-            ctx.font = "12px 微软雅黑,Verdana"; // 字号肿么没有用? (ˉ(∞)ˉ)
-            ctx.fillText("click here", 23, 16);
+            ctx.scale(1.2, 1.2);
+            ctx.font = "8px 微软雅黑,Verdana"; // 字号肿么没有用? (ˉ(∞)ˉ)
+            ctx.fillText("点我-神秘礼物", 10, 10);
             ctx.restore();
         },
         clear: function() {
